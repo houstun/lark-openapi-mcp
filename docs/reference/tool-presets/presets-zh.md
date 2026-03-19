@@ -62,6 +62,7 @@
 | bitable.v1.appTable.create | 创建多维表格数据表 | | ✓ | | ✓ | ✓ | | | |
 | bitable.v1.appTable.list | 获取多维表格数据表列表 | | ✓ | | ✓ | ✓ | | | |
 | bitable.v1.appTableField.list | 获取多维表格数据表字段列表 | | ✓ | | ✓ | ✓ | | | |
+| bitable.builtin.smartQuery | 通过多维表格或 Wiki URL 智能查询记录 | ✓ | ✓ | | ✓ | ✓ | | | |
 | bitable.v1.appTableRecord.search | 搜索多维表格数据表记录 | ✓ | ✓ | | ✓ | ✓ | | | |
 | bitable.v1.appTableRecord.create | 创建多维表格数据表记录 | | ✓ | | ✓ | | | | |
 | bitable.v1.appTableRecord.batchCreate | 批量创建多维表格数据表记录 | ✓ | | | | ✓ | | | |
@@ -69,7 +70,14 @@
 | bitable.v1.appTableRecord.batchUpdate | 批量更新多维表格数据表记录 | | | | | ✓ | | | |
 | docx.v1.document.rawContent | 获取文档内容 | ✓ | ✓ | | | | ✓ | | |
 | docx.builtin.import | 导入文档 | ✓ | ✓ | | | | ✓ | | |
+| docx.builtin.create | 根据 Markdown 创建新文档 | ✓ | ✓ | | | | ✓ | | |
+| docx.builtin.fetch | 获取文档元数据和 Markdown 内容 | ✓ | ✓ | | | | ✓ | | |
+| docx.builtin.update | 原地更新已有文档 | | ✓ | | | | ✓ | | |
+| docx.builtin.markdownRead | 以 Markdown 读取文档 | ✓ | ✓ | | | | ✓ | | |
+| docx.builtin.markdownWrite | 根据 Markdown 新建文档或覆盖已有正文 | | ✓ | | | | ✓ | | |
 | docx.builtin.search | 搜索文档 | ✓ | ✓ | | | | ✓ | | |
+| drive.builtin.upload | 上传本地文件到云盘 | | ✓ | | | | ✓ | | |
+| drive.builtin.download | 从云盘下载文件到本地 | | ✓ | | | | ✓ | | |
 | drive.v1.permissionMember.create | 添加协作者权限 | | ✓ | | | | ✓ | | |
 | wiki.v2.space.getNode | 获取知识库节点 | ✓ | ✓ | | | | ✓ | | |
 | wiki.v1.node.search | 搜索知识库节点 | | ✓ | | | | ✓ | | |

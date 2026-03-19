@@ -46,8 +46,12 @@ export const presetLightToolNames: ToolName[] = [
   'contact.v3.user.batchGetId',
   'docx.v1.document.rawContent',
   'docx.builtin.import',
+  'docx.builtin.create',
+  'docx.builtin.fetch',
+  'docx.builtin.markdownRead',
   'docx.builtin.search',
   'wiki.v2.space.getNode',
+  'bitable.builtin.smartQuery',
   'bitable.v1.appTableRecord.search',
   'bitable.v1.appTableRecord.batchCreate',
 ];
@@ -67,6 +71,7 @@ export const presetBaseCommonToolNames: ToolName[] = [
   'bitable.v1.appTable.create',
   'bitable.v1.appTable.list',
   'bitable.v1.appTableField.list',
+  'bitable.builtin.smartQuery',
   'bitable.v1.appTableRecord.search',
 ];
 
@@ -85,7 +90,14 @@ export const presetBaseRecordBatchToolNames: ToolName[] = [
 export const presetDocToolNames: ToolName[] = [
   'docx.v1.document.rawContent',
   'docx.builtin.import',
+  'docx.builtin.create',
+  'docx.builtin.fetch',
+  'docx.builtin.update',
+  'docx.builtin.markdownWrite',
+  'docx.builtin.markdownRead',
   'docx.builtin.search',
+  'drive.builtin.upload',
+  'drive.builtin.download',
   'drive.v1.permissionMember.create',
   'wiki.v2.space.getNode',
   'wiki.v1.node.search',

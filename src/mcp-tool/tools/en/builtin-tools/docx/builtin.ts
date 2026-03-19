@@ -1,11 +1,103 @@
-import { McpTool } from '../../../../types';
 import * as lark from '@larksuiteoapi/node-sdk';
-import { ReadStream } from 'fs';
-import { Readable } from 'stream';
 import { z } from 'zod';
+import { McpHandlerOptions, McpTool } from '../../../../types';
+import {
+  applyMarkdownUpdate,
+  createDocxFromMarkdown,
+  fetchDocxAsMarkdown,
+  handlePermissionError,
+  isPermissionError,
+  rewriteDocxFromMarkdown,
+} from '../../../../utils';
 
-// Tool name type
-export type docxBuiltinToolName = 'docx.builtin.search' | 'docx.builtin.import';
+const updateModeSchema = z.enum([
+  'overwrite',
+  'append',
+  'replace_range',
+  'replace_all',
+  'insert_before',
+  'insert_after',
+  'delete_range',
+]);
+
+export type docxBuiltinToolName =
+  | 'docx.builtin.search'
+  | 'docx.builtin.import'
+  | 'docx.builtin.create'
+  | 'docx.builtin.fetch'
+  | 'docx.builtin.update'
+  | 'docx.builtin.markdownWrite'
+  | 'docx.builtin.markdownRead';
+
+function getReqOptions(options: McpHandlerOptions | undefined, useUAT?: boolean) {
+  const userAccessToken = options?.userAccessToken as string | undefined;
+  return userAccessToken && useUAT ? lark.withUserAccessToken(userAccessToken) : undefined;
+}
+
+function successResult(payload: Record<string, unknown> | string) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: typeof payload === 'string' ? payload : JSON.stringify(payload),
+      },
+    ],
+  };
+}
+
+function errorResult(payload: Record<string, unknown> | string) {
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text' as const,
+        text: typeof payload === 'string' ? payload : JSON.stringify(payload),
+      },
+    ],
+  };
+}
+
+function normalizeError(error: unknown) {
+  if (isPermissionError(error)) {
+    return errorResult(handlePermissionError(error));
+  }
+  return errorResult((error as any)?.response?.data || { msg: (error as Error)?.message || String(error) });
+}
+
+function requireDocumentTarget(data: { document_id?: string; doc_id?: string }) {
+  const target = data.document_id || data.doc_id;
+  if (!target) {
+    throw new Error('document_id or doc_id is required');
+  }
+  return target;
+}
+
+function validateUpdatePayload(data: {
+  document_id?: string;
+  doc_id?: string;
+  markdown?: string;
+  mode: z.infer<typeof updateModeSchema>;
+  selection_with_ellipsis?: string;
+  selection_by_title?: string;
+}) {
+  requireDocumentTarget(data);
+
+  const selectionRequired = ['replace_range', 'insert_before', 'insert_after', 'delete_range'].includes(data.mode);
+  if (selectionRequired) {
+    const hasEllipsis = Boolean(data.selection_with_ellipsis);
+    const hasTitle = Boolean(data.selection_by_title);
+    if ((hasEllipsis && hasTitle) || (!hasEllipsis && !hasTitle)) {
+      throw new Error(
+        'selection_with_ellipsis and selection_by_title are mutually exclusive, and one of them is required for this mode',
+      );
+    }
+  }
+
+  const markdownRequired = !['delete_range'].includes(data.mode);
+  if (markdownRequired && !data.markdown) {
+    throw new Error(`markdown is required when mode=${data.mode}`);
+  }
+}
 
 export const larkDocxBuiltinSearchTool: McpTool = {
   project: 'docx',
@@ -41,13 +133,10 @@ export const larkDocxBuiltinSearchTool: McpTool = {
   },
   customHandler: async (client, params, options): Promise<any> => {
     try {
-      const { userAccessToken } = options || {};
+      const userAccessToken = options?.userAccessToken;
 
       if (!userAccessToken) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: JSON.stringify({ msg: 'User access token is not configured' }) }],
-        };
+        return errorResult({ msg: 'User access token is not configured' });
       }
 
       const response = await client.request(
@@ -59,24 +148,9 @@ export const larkDocxBuiltinSearchTool: McpTool = {
         lark.withUserAccessToken(userAccessToken),
       );
 
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify(response.data ?? response),
-          },
-        ],
-      };
+      return successResult(response.data ?? response);
     } catch (error) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify((error as any).response.data),
-          },
-        ],
-      };
+      return errorResult((error as any)?.response?.data || { msg: (error as Error)?.message || String(error) });
     }
   },
 };
@@ -85,124 +159,269 @@ export const larkDocxBuiltinImportTool: McpTool = {
   project: 'docx',
   name: 'docx.builtin.import',
   accessTokens: ['user', 'tenant'],
-  description: '[Feishu/Lark]-Docs-Document-Import Document-Import cloud document, maximum 20MB',
+  description: '[Feishu/Lark]-Docs-Document-Import Document-Import a docx document from Markdown, up to 20MB.',
   schema: {
-    data: z
-      .object({
-        markdown: z.string().describe('Markdown file content'),
-        file_name: z.string().describe('File name').max(27).optional(),
-      })
-      .describe('Request body'),
+    data: z.object({
+      markdown: z.string().describe('Markdown file content'),
+      file_name: z.string().describe('File name').max(27).optional(),
+    }),
     useUAT: z.boolean().describe('Use user identity for the request, otherwise use application identity').optional(),
   },
   customHandler: async (client, params, options): Promise<any> => {
     try {
-      const { userAccessToken } = options || {};
-      const file = Readable.from(params.data.markdown) as ReadStream;
-
-      const data = {
-        file_name: 'docx.md',
-        parent_type: 'ccm_import_open' as const,
-        parent_node: '/',
-        size: Buffer.byteLength(params.data.markdown),
-        file,
-        extra: JSON.stringify({ obj_type: 'docx', file_extension: 'md' }),
-      };
-
-      const response =
-        userAccessToken && params.useUAT
-          ? await client.drive.media.uploadAll({ data }, lark.withUserAccessToken(userAccessToken))
-          : await client.drive.media.uploadAll({ data });
-
-      if (!response?.file_token) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({ msg: 'Document import failed, please check the markdown file content' }),
-            },
-          ],
-        };
-      }
-
-      const importData = {
-        file_extension: 'md',
-        file_name: params.data.file_name,
-        file_token: response?.file_token,
-        type: 'docx',
-        point: {
-          mount_type: 1,
-          mount_key: '',
+      const reqOptions = getReqOptions(options, params.useUAT);
+      const result = await createDocxFromMarkdown(
+        client,
+        {
+          markdown: params.data.markdown,
+          title: params.data.file_name,
         },
-      };
-
-      const importResponse =
-        userAccessToken && params.useUAT
-          ? await client.drive.importTask.create({ data: importData }, lark.withUserAccessToken(userAccessToken))
-          : await client.drive.importTask.create({ data: importData });
-
-      const taskId = importResponse.data?.ticket;
-      if (!taskId) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({ msg: 'Document import failed, please check the markdown file content' }),
-            },
-          ],
-        };
-      }
-
-      for (let i = 0; i < 5; i++) {
-        const taskResponse =
-          userAccessToken && params.useUAT
-            ? await client.drive.importTask.get({ path: { ticket: taskId } }, lark.withUserAccessToken(userAccessToken))
-            : await client.drive.importTask.get({ path: { ticket: taskId } });
-
-        if (taskResponse.data?.result?.job_status === 0) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify(taskResponse.data ?? taskResponse),
-              },
-            ],
-          };
-        } else if (taskResponse.data?.result?.job_status !== 1 && taskResponse.data?.result?.job_status !== 2) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify(taskResponse.data),
-              },
-            ],
-          };
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({ msg: 'Document import failed, please try again later' }),
-          },
-        ],
-      };
+        reqOptions,
+      );
+      return successResult({
+        success: true,
+        document_id: result.documentId || result.url,
+        url: result.url,
+      });
     } catch (error) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify((error as any)?.response?.data || error),
-          },
-        ],
-      };
+      return normalizeError(error);
     }
   },
 };
 
-export const docxBuiltinTools = [larkDocxBuiltinSearchTool, larkDocxBuiltinImportTool];
+export const larkDocxBuiltinCreateTool: McpTool = {
+  project: 'docx',
+  name: 'docx.builtin.create',
+  accessTokens: ['user', 'tenant'],
+  description: '[Feishu/Lark]-Docs-Document-Create Document-Create a new document from Markdown content.',
+  schema: {
+    data: z.object({
+      markdown: z.string().describe('Markdown content to import'),
+      title: z.string().describe('Title of the new document'),
+      folder_token: z.string().describe('Optional folder token where the document should be created').optional(),
+    }),
+    useUAT: z.boolean().describe('Use user identity for the request, otherwise use application identity').optional(),
+  },
+  customHandler: async (client, params, options): Promise<any> => {
+    try {
+      const reqOptions = getReqOptions(options, params.useUAT);
+      const result = await createDocxFromMarkdown(
+        client,
+        {
+          markdown: params.data.markdown,
+          title: params.data.title,
+          folderToken: params.data.folder_token,
+        },
+        reqOptions,
+      );
+      return successResult({
+        success: true,
+        document_id: result.documentId || result.url,
+        url: result.url,
+      });
+    } catch (error) {
+      return normalizeError(error);
+    }
+  },
+};
+
+export const larkDocxBuiltinFetchTool: McpTool = {
+  project: 'docx',
+  name: 'docx.builtin.fetch',
+  accessTokens: ['user', 'tenant'],
+  description:
+    '[Feishu/Lark]-Docs-Document-Fetch Document-Fetch document title and Markdown content, with optional pagination.',
+  schema: {
+    data: z.object({
+      document_id: z.string().describe('Document ID or docx URL').optional(),
+      doc_id: z.string().describe('Alias of document_id for OpenClaw-style compatibility').optional(),
+      offset: z.number().min(0).describe('Optional character offset for pagination').optional(),
+      limit: z.number().min(1).describe('Optional maximum number of characters to return').optional(),
+      lang: z.enum(['zh', 'en', 'ja']).describe('Language for mention rendering').optional(),
+    }),
+    useUAT: z.boolean().describe('Use user identity for the request, otherwise use application identity').optional(),
+  },
+  customHandler: async (client, params, options): Promise<any> => {
+    try {
+      const reqOptions = getReqOptions(options, params.useUAT);
+      const documentTarget = requireDocumentTarget(params.data);
+      const result = await fetchDocxAsMarkdown(client, documentTarget, reqOptions, { lang: params.data.lang });
+      const offset = params.data.offset || 0;
+      const limit = params.data.limit;
+      const markdown =
+        limit === undefined
+          ? result.markdown.slice(offset)
+          : result.markdown.slice(offset, Math.max(offset, offset + limit));
+
+      return successResult({
+        success: true,
+        document_id: result.documentId,
+        title: result.title,
+        revision_id: result.revisionId,
+        markdown,
+        total_length: result.markdown.length,
+        offset,
+        limit,
+        has_more: offset + markdown.length < result.markdown.length,
+      });
+    } catch (error) {
+      return normalizeError(error);
+    }
+  },
+};
+
+export const larkDocxBuiltinMarkdownWriteTool: McpTool = {
+  project: 'docx',
+  name: 'docx.builtin.markdownWrite',
+  accessTokens: ['user', 'tenant'],
+  description:
+    '[Feishu/Lark]-Docs-Document-Markdown Write-Create a new document from Markdown, or overwrite an existing document when document_id is provided.',
+  schema: {
+    data: z.object({
+      document_id: z.string().describe('Optional document ID or URL to overwrite in place').optional(),
+      markdown: z.string().describe('Markdown content to write'),
+      title: z.string().describe('Title for the new document').optional(),
+      folder_token: z.string().describe('Folder token where the new document should be created').optional(),
+    }),
+    useUAT: z.boolean().describe('Use user identity for the request, otherwise use application identity').optional(),
+  },
+  customHandler: async (client, params, options): Promise<any> => {
+    try {
+      const reqOptions = getReqOptions(options, params.useUAT);
+
+      if (params.data.document_id) {
+        const rewritten = await rewriteDocxFromMarkdown(
+          client,
+          params.data.document_id,
+          params.data.markdown,
+          reqOptions,
+        );
+        return successResult({
+          success: true,
+          document_id: rewritten.documentId,
+          title: rewritten.title,
+          revision_id: rewritten.revisionId,
+          block_count: rewritten.blockCount,
+          note: params.data.title
+            ? 'Title updates are not supported by the current official docx API. Markdown content was overwritten in place.'
+            : 'Markdown content was overwritten in place.',
+        });
+      }
+
+      const created = await createDocxFromMarkdown(
+        client,
+        {
+          markdown: params.data.markdown,
+          title: params.data.title,
+          folderToken: params.data.folder_token,
+        },
+        reqOptions,
+      );
+
+      return successResult({
+        success: true,
+        document_id: created.documentId || created.url,
+        url: created.url,
+      });
+    } catch (error) {
+      return normalizeError(error);
+    }
+  },
+};
+
+export const larkDocxBuiltinUpdateTool: McpTool = {
+  project: 'docx',
+  name: 'docx.builtin.update',
+  accessTokens: ['user', 'tenant'],
+  description:
+    '[Feishu/Lark]-Docs-Document-Update Document-Update an existing document in place with overwrite, append, replace, insert, or delete modes.',
+  schema: {
+    data: z.object({
+      document_id: z.string().describe('Document ID or docx URL').optional(),
+      doc_id: z.string().describe('Alias of document_id for OpenClaw-style compatibility').optional(),
+      markdown: z.string().describe('Markdown payload used by the update mode').optional(),
+      mode: updateModeSchema.describe('Update mode'),
+      selection_with_ellipsis: z
+        .string()
+        .describe('Range selector in the form "start...end", required for range-based modes')
+        .optional(),
+      selection_by_title: z
+        .string()
+        .describe('Heading selector such as "## Section Title", required for heading-based range modes')
+        .optional(),
+      new_title: z.string().describe('Reserved. Title update is not yet supported by the official API').optional(),
+      lang: z
+        .enum(['zh', 'en', 'ja'])
+        .describe('Language for mention rendering when fetching current Markdown')
+        .optional(),
+    }),
+    useUAT: z.boolean().describe('Use user identity for the request, otherwise use application identity').optional(),
+  },
+  customHandler: async (client, params, options): Promise<any> => {
+    try {
+      validateUpdatePayload(params.data);
+      const reqOptions = getReqOptions(options, params.useUAT);
+      const documentTarget = requireDocumentTarget(params.data);
+      const fetched = await fetchDocxAsMarkdown(client, documentTarget, reqOptions, { lang: params.data.lang });
+      const nextMarkdown = applyMarkdownUpdate(fetched.markdown, {
+        mode: params.data.mode,
+        markdown: params.data.markdown,
+        selection_by_title: params.data.selection_by_title,
+        selection_with_ellipsis: params.data.selection_with_ellipsis,
+      });
+      const rewritten = await rewriteDocxFromMarkdown(client, fetched.documentId, nextMarkdown, reqOptions);
+
+      return successResult({
+        success: true,
+        document_id: rewritten.documentId,
+        title: rewritten.title,
+        revision_id: rewritten.revisionId,
+        mode: params.data.mode,
+        markdown_length_before: fetched.markdown.length,
+        markdown_length_after: nextMarkdown.length,
+        block_count: rewritten.blockCount,
+        note: params.data.new_title
+          ? 'Document title update is not supported by the current official docx API. The body content was updated successfully.'
+          : undefined,
+      });
+    } catch (error) {
+      return normalizeError(error);
+    }
+  },
+};
+
+export const larkDocxBuiltinMarkdownReadTool: McpTool = {
+  project: 'docx',
+  name: 'docx.builtin.markdownRead',
+  accessTokens: ['user', 'tenant'],
+  description:
+    '[Feishu/Lark]-Docs-Document-Markdown Read-Read a Feishu/Lark document and return official Markdown content.',
+  schema: {
+    data: z.object({
+      document_id: z.string().describe('Feishu/Lark document ID or URL'),
+      lang: z.enum(['zh', 'en', 'ja']).describe('Language for mention rendering').optional(),
+    }),
+    useUAT: z.boolean().describe('Use user identity for the request, otherwise use application identity').optional(),
+  },
+  customHandler: async (client, params, options): Promise<any> => {
+    try {
+      const reqOptions = getReqOptions(options, params.useUAT);
+      const fetched = await fetchDocxAsMarkdown(client, params.data.document_id, reqOptions, {
+        lang: params.data.lang,
+      });
+      return successResult(fetched.markdown || '(Document is empty)');
+    } catch (error) {
+      return normalizeError(error);
+    }
+  },
+};
+
+export const docxBuiltinTools = [
+  larkDocxBuiltinSearchTool,
+  larkDocxBuiltinImportTool,
+  larkDocxBuiltinCreateTool,
+  larkDocxBuiltinFetchTool,
+  larkDocxBuiltinMarkdownWriteTool,
+  larkDocxBuiltinUpdateTool,
+  larkDocxBuiltinMarkdownReadTool,
+];

@@ -149,9 +149,7 @@ npx -y @larksuiteoapi/lark-mcp login -a cli_xxxx -s yyyyy
 
 ## 自定义配置开启API
 
-> ⚠️ **文件上传下载**：暂不支持文件的上传和下载操作
-
-> ⚠️ **云文档编辑**：暂不支持直接编辑飞书云文档内容（仅支持导入和读取）
+> ⚠️ **云文档编辑**：当前 fork 已支持基于官方 API 的“尽力而为”原地更新能力，包括 `docx.builtin.update` 和支持覆盖模式的 `docx.builtin.markdownWrite`。实现方式是先抓取官方 Markdown，再在 Markdown 层应用变更，最后通过官方块接口重写顶层内容块。复杂嵌套结构可能会被规范化，文档标题更新目前仍受官方 Docx API 限制而不支持。
 
 默认情况下，MCP 服务启用常用 API。如需启用其他工具或仅启用特定 API 或 preset，推荐在 MCP Client 配置（JSON）中通过 `-t` 指定（用逗号分隔）：
 
@@ -176,6 +174,16 @@ npx -y @larksuiteoapi/lark-mcp login -a cli_xxxx -s yyyyy
 关于所有预设工具集的详细信息以及每个预设包含哪些工具，请参考[预设工具集参考文档](./docs/reference/tool-presets/presets-zh.md)。
 
 对于所有支持的飞书/Lark工具列表可以在[tools.md](./docs/reference/tool-presets/tools-zh.md)中查看。
+
+当前 fork 额外补充了几类更适合 Agent 工作流的 builtin 工具：
+
+- `docx.builtin.create`：根据 Markdown 创建新 Docx 文档
+- `docx.builtin.fetch`：获取文档元数据和官方 Markdown 内容
+- `docx.builtin.update`：支持 overwrite、append、replace、insert、delete 等模式原地更新文档
+- `docx.builtin.markdownRead`：将文档内容转换为 Markdown
+- `docx.builtin.markdownWrite`：根据 Markdown 新建文档，或在传入 `document_id` 时原地覆盖正文
+- `drive.builtin.upload` / `drive.builtin.download`：本地文件与云盘之间的上传下载
+- `bitable.builtin.smartQuery`：输入多维表格或 Wiki URL 后自动解析并查询记录
 
 > **⚠️ 提示**：非预设 API 没有经过兼容性测试，AI在理解使用的过程中可能效果不理想
 

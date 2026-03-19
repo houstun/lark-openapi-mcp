@@ -152,9 +152,7 @@ To switch to the international version of Lark, add the `--domain` parameter in 
 
 ## Custom API Configuration
 
-> ⚠️ **File Upload/Download**: File upload and download operations are not yet supported
-
-> ⚠️ **Document Editing**: Direct editing of Feishu cloud documents is not supported (only importing and reading are available)
+> ⚠️ **Document Editing**: This fork now supports best-effort in-place Docx updates through `docx.builtin.update` and overwrite-mode `docx.builtin.markdownWrite`. The implementation fetches official Markdown, applies the change in Markdown space, and rewrites top-level blocks through official APIs. Complex nested structures may be normalized, and document title updates are still not supported by the official Docx API.
 
 By default, the MCP service enables common APIs. To enable other tools or only specific APIs or presets, you can specify them using the `-t` parameter in the MCP Client configuration (JSON):
 
@@ -179,6 +177,16 @@ By default, the MCP service enables common APIs. To enable other tools or only s
 For detailed information about all preset tool collections and which tools are included in each preset, please refer to the [Preset Tool Collections Reference](./docs/reference/tool-presets/presets.md).
 
 A complete list of all supported Feishu/Lark tools can be found in [tools.md](./docs/reference/tool-presets/tools-en.md).
+
+This fork also adds a few higher-level builtin tools inspired by OpenClaw-style workflows:
+
+- `docx.builtin.create`: create a new Docx document from Markdown content
+- `docx.builtin.fetch`: fetch document metadata plus official Markdown content
+- `docx.builtin.update`: update an existing document with overwrite, append, replace, insert, and delete modes
+- `docx.builtin.markdownRead`: convert a Docx document into Markdown
+- `docx.builtin.markdownWrite`: create a new document from Markdown, or overwrite an existing document body in place
+- `drive.builtin.upload` / `drive.builtin.download`: transfer files between local disk and Drive
+- `bitable.builtin.smartQuery`: resolve a Bitable or Wiki URL and fetch records automatically
 
 > **⚠️ Notice**：Non-preset APIs have not undergone compatibility testing, and the AI may not perform optimally during the process of understanding and using them.
 

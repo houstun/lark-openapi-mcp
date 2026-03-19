@@ -62,6 +62,7 @@ You can also combine presets with individual tools:
 | bitable.v1.appTable.create | Create base data table | | ✓ | | ✓ | ✓ | | | |
 | bitable.v1.appTable.list | Get base data table list | | ✓ | | ✓ | ✓ | | | |
 | bitable.v1.appTableField.list | Get base data table field list | | ✓ | | ✓ | ✓ | | | |
+| bitable.builtin.smartQuery | Smart query base records from a Bitable or Wiki URL | ✓ | ✓ | | ✓ | ✓ | | | |
 | bitable.v1.appTableRecord.search | Search base data table records | ✓ | ✓ | | ✓ | ✓ | | | |
 | bitable.v1.appTableRecord.create | Create base data table records | | ✓ | | ✓ | | | | |
 | bitable.v1.appTableRecord.batchCreate | Batch create base data table records | ✓ | | | | ✓ | | | |
@@ -69,7 +70,14 @@ You can also combine presets with individual tools:
 | bitable.v1.appTableRecord.batchUpdate | Batch update base data table records | | | | | ✓ | | | |
 | docx.v1.document.rawContent | Get document content | ✓ | ✓ | | | | ✓ | | |
 | docx.builtin.import | Import documents | ✓ | ✓ | | | | ✓ | | |
+| docx.builtin.create | Create a new document from Markdown | ✓ | ✓ | | | | ✓ | | |
+| docx.builtin.fetch | Fetch document metadata and Markdown | ✓ | ✓ | | | | ✓ | | |
+| docx.builtin.update | Update an existing document in place | | ✓ | | | | ✓ | | |
+| docx.builtin.markdownRead | Read a document as Markdown | ✓ | ✓ | | | | ✓ | | |
+| docx.builtin.markdownWrite | Create a document from Markdown or overwrite an existing one | | ✓ | | | | ✓ | | |
 | docx.builtin.search | Search documents | ✓ | ✓ | | | | ✓ | | |
+| drive.builtin.upload | Upload a local file to Drive | | ✓ | | | | ✓ | | |
+| drive.builtin.download | Download a Drive file to local disk | | ✓ | | | | ✓ | | |
 | drive.v1.permissionMember.create | Add collaborator permissions | | ✓ | | | | ✓ | | |
 | wiki.v2.space.getNode | Get Wiki node | ✓ | ✓ | | | | ✓ | | |
 | wiki.v1.node.search | Search Wiki nodes | | ✓ | | | | ✓ | | |
