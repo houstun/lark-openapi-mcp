@@ -150,6 +150,120 @@ To switch to the international version of Lark, add the `--domain` parameter in 
 
 > **💡 Tip**: Ensure your application is created in the corresponding domain environment's open platform. International version applications cannot be used with Feishu China version, and vice versa.
 
+## Environment Setup Guide
+
+Use the table below to choose the right setup path before connecting this MCP server to your client:
+
+| Scenario | Requirements | Recommended Setup |
+|---|---|---|
+| Feishu China environment | App created at `open.feishu.cn` | Set `LARK_DOMAIN=https://open.feishu.cn` or pass `--domain https://open.feishu.cn` |
+| Lark international environment | App created at `open.larksuite.com` | Set `LARK_DOMAIN=https://open.larksuite.com` or pass `--domain https://open.larksuite.com` |
+| Tenant/app identity only | App has the required app permissions | Use default `tokenMode=auto` or explicitly set `tenant_access_token` |
+| User identity access | OAuth redirect URL configured, app has user scopes | Run `login`, then start MCP with `--oauth --token-mode user_access_token` |
+| Official npm package usage | Node.js `>=20`, npm available | Start with `npx -y @larksuiteoapi/lark-mcp ...` |
+| Local source checkout / custom fork | Node.js `>=20`, `npm install`, `npm run build` | Start from the local repository using the launcher script below |
+
+### Local Source / Fork Setup
+
+This fork includes a local launcher for macOS/Linux:
+
+1. Clone the repository and install dependencies:
+
+```bash
+git clone <your-fork-url>
+cd lark-openapi-mcp
+npm install
+npm run build
+```
+
+2. Create a local environment file based on [`.env.local.example`](./.env.local.example):
+
+```bash
+cp .env.local.example .env.local
+```
+
+3. Fill in the required variables in `.env.local`:
+
+```env
+APP_ID=cli_xxxx
+APP_SECRET=your_secret
+LARK_DOMAIN=https://open.feishu.cn
+LARK_TOOLS=preset.doc.default
+LARK_TOKEN_MODE=auto
+```
+
+4. Start the MCP server from the local checkout:
+
+```bash
+./scripts/lark-mcp-local.sh mcp
+```
+
+For Windows, build first and run the CLI directly:
+
+```bash
+npm install
+npm run build
+node dist/cli.js mcp
+```
+
+### Local MCP Client Configuration
+
+If you want Cursor, Claude Desktop, or another MCP client to use the local fork instead of the published npm package, point the client at the local launcher:
+
+```json
+{
+  "mcpServers": {
+    "lark-mcp-local": {
+      "command": "/absolute/path/to/lark-openapi-mcp/scripts/lark-mcp-local.sh",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+If your client runs on Windows, use the built CLI instead:
+
+```json
+{
+  "mcpServers": {
+    "lark-mcp-local": {
+      "command": "node",
+      "args": ["C:\\path\\to\\lark-openapi-mcp\\dist\\cli.js", "mcp"]
+    }
+  }
+}
+```
+
+### Environment Variables
+
+The most commonly used variables are:
+
+- `APP_ID`: Feishu/Lark app ID
+- `APP_SECRET`: Feishu/Lark app secret
+- `LARK_DOMAIN`: `https://open.feishu.cn` or `https://open.larksuite.com`
+- `LARK_TOOLS`: preset name or comma-separated tool list, such as `preset.doc.default`
+- `LARK_TOKEN_MODE`: `auto`, `tenant_access_token`, or `user_access_token`
+- `USER_ACCESS_TOKEN`: optional direct user token injection for debugging or controlled environments
+
+### User OAuth Setup
+
+Use this path when the app needs to read personal docs, send messages as a user, or access user-scoped resources:
+
+1. Configure the redirect URL in the developer console. Default: `http://localhost:3000/callback`
+2. Run login locally:
+
+```bash
+npx -y @larksuiteoapi/lark-mcp login -a cli_xxxx -s your_secret
+```
+
+3. Start MCP with OAuth enabled:
+
+```bash
+npx -y @larksuiteoapi/lark-mcp mcp -a cli_xxxx -s your_secret --oauth --token-mode user_access_token
+```
+
+> **Security Note**: Keep `.env.local`, tokens, and app secrets out of Git. This repository already ignores `.env*` files by default.
+
 ## Custom API Configuration
 
 > ⚠️ **Document Editing**: This fork now supports best-effort in-place Docx updates through `docx.builtin.update` and overwrite-mode `docx.builtin.markdownWrite`. The implementation fetches official Markdown, applies the change in Markdown space, and rewrites top-level blocks through official APIs. Complex nested structures may be normalized. Title updates are supported when the docx is mounted in Wiki via `wiki.v2.spaceNode.updateTitle`; standalone docx titles are still not exposed for direct update by the official Docx API.

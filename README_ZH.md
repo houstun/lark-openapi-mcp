@@ -146,6 +146,120 @@ npx -y @larksuiteoapi/lark-mcp login -a cli_xxxx -s yyyyy
 
 > **💡 提示**：确保您的应用已在对应域名环境的开放平台创建。国际版应用无法在飞书中国版使用，反之亦然。
 
+## 环境配置指南
+
+接入前建议先根据实际使用场景确认环境配置方式：
+
+| 场景 | 要求 | 推荐配置方式 |
+|---|---|---|
+| 飞书中国版环境 | 应用创建于 `open.feishu.cn` | 设置 `LARK_DOMAIN=https://open.feishu.cn` 或传 `--domain https://open.feishu.cn` |
+| Lark 国际版环境 | 应用创建于 `open.larksuite.com` | 设置 `LARK_DOMAIN=https://open.larksuite.com` 或传 `--domain https://open.larksuite.com` |
+| 仅使用应用身份 | 应用已开通所需应用权限 | 使用默认 `tokenMode=auto`，或显式设置 `tenant_access_token` |
+| 需要用户身份访问 | 已配置 OAuth 重定向地址，应用已开通用户权限范围 | 先执行 `login`，再用 `--oauth --token-mode user_access_token` 启动 |
+| 直接使用 npm 官方包 | Node.js `>=20`，本机有 npm | 使用 `npx -y @larksuiteoapi/lark-mcp ...` 启动 |
+| 使用本地源码或自定义 fork | Node.js `>=20`，执行过 `npm install` 和 `npm run build` | 使用仓库内的本地启动脚本 |
+
+### 本地源码 / Fork 配置
+
+这个 fork 已附带适用于 macOS/Linux 的本地启动脚本：
+
+1. 拉取代码并安装依赖：
+
+```bash
+git clone <your-fork-url>
+cd lark-openapi-mcp
+npm install
+npm run build
+```
+
+2. 基于 [`.env.local.example`](./.env.local.example) 创建本地环境文件：
+
+```bash
+cp .env.local.example .env.local
+```
+
+3. 在 `.env.local` 中填写最少配置：
+
+```env
+APP_ID=cli_xxxx
+APP_SECRET=your_secret
+LARK_DOMAIN=https://open.feishu.cn
+LARK_TOOLS=preset.doc.default
+LARK_TOKEN_MODE=auto
+```
+
+4. 从本地源码启动 MCP：
+
+```bash
+./scripts/lark-mcp-local.sh mcp
+```
+
+如果是 Windows，建议先构建再直接运行 CLI：
+
+```bash
+npm install
+npm run build
+node dist/cli.js mcp
+```
+
+### 本地 MCP Client 配置
+
+如果希望 Cursor、Claude Desktop 或其他 MCP 客户端直接使用本地 fork，而不是 npm 上的已发布版本，可以这样配置：
+
+```json
+{
+  "mcpServers": {
+    "lark-mcp-local": {
+      "command": "/absolute/path/to/lark-openapi-mcp/scripts/lark-mcp-local.sh",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Windows 环境可改为直接调用构建后的 CLI：
+
+```json
+{
+  "mcpServers": {
+    "lark-mcp-local": {
+      "command": "node",
+      "args": ["C:\\path\\to\\lark-openapi-mcp\\dist\\cli.js", "mcp"]
+    }
+  }
+}
+```
+
+### 常用环境变量
+
+最常见的环境变量如下：
+
+- `APP_ID`：飞书/Lark 应用 ID
+- `APP_SECRET`：飞书/Lark 应用 Secret
+- `LARK_DOMAIN`：`https://open.feishu.cn` 或 `https://open.larksuite.com`
+- `LARK_TOOLS`：preset 名称或逗号分隔的工具列表，例如 `preset.doc.default`
+- `LARK_TOKEN_MODE`：`auto`、`tenant_access_token` 或 `user_access_token`
+- `USER_ACCESS_TOKEN`：可选，适合调试场景下直接注入用户令牌
+
+### 用户 OAuth 配置
+
+如果需要读取个人文档、以用户身份发送消息、访问用户私有资源，建议按下面方式配置：
+
+1. 在开发者后台配置重定向 URL，默认是 `http://localhost:3000/callback`
+2. 本地执行登录：
+
+```bash
+npx -y @larksuiteoapi/lark-mcp login -a cli_xxxx -s your_secret
+```
+
+3. 启动 MCP 时启用 OAuth：
+
+```bash
+npx -y @larksuiteoapi/lark-mcp mcp -a cli_xxxx -s your_secret --oauth --token-mode user_access_token
+```
+
+> **安全提示**：请不要把 `.env.local`、用户令牌或应用密钥提交到 Git。当前仓库默认已忽略 `.env*` 文件。
+
 
 ## 自定义配置开启API
 
