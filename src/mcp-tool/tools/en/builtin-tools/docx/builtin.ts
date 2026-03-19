@@ -8,6 +8,7 @@ import {
   handlePermissionError,
   isPermissionError,
   rewriteDocxFromMarkdown,
+  updateDocxTitle,
 } from '../../../../utils';
 
 const updateModeSchema = z.enum([
@@ -296,14 +297,21 @@ export const larkDocxBuiltinMarkdownWriteTool: McpTool = {
           params.data.markdown,
           reqOptions,
         );
+        const titleUpdate = params.data.title
+          ? await updateDocxTitle(client, params.data.document_id, params.data.title, reqOptions)
+          : undefined;
         return successResult({
           success: true,
           document_id: rewritten.documentId,
-          title: rewritten.title,
+          title: titleUpdate?.updated ? titleUpdate.title : rewritten.title,
           revision_id: rewritten.revisionId,
           block_count: rewritten.blockCount,
+          title_updated: titleUpdate?.updated ?? false,
+          title_update_via: titleUpdate?.via,
           note: params.data.title
-            ? 'Title updates are not supported by the current official docx API. Markdown content was overwritten in place.'
+            ? titleUpdate?.updated
+              ? 'Markdown content was overwritten in place and the title was updated through the Wiki node binding.'
+              : 'Markdown content was overwritten in place. Title update is only supported when this docx is mounted in Wiki.'
             : 'Markdown content was overwritten in place.',
         });
       }
@@ -349,7 +357,12 @@ export const larkDocxBuiltinUpdateTool: McpTool = {
         .string()
         .describe('Heading selector such as "## Section Title", required for heading-based range modes')
         .optional(),
-      new_title: z.string().describe('Reserved. Title update is not yet supported by the official API').optional(),
+      new_title: z
+        .string()
+        .describe(
+          'Optional new title. Currently supported when the docx is mounted in Wiki; standalone docx titles remain unsupported',
+        )
+        .optional(),
       lang: z
         .enum(['zh', 'en', 'ja'])
         .describe('Language for mention rendering when fetching current Markdown')
@@ -370,18 +383,25 @@ export const larkDocxBuiltinUpdateTool: McpTool = {
         selection_with_ellipsis: params.data.selection_with_ellipsis,
       });
       const rewritten = await rewriteDocxFromMarkdown(client, fetched.documentId, nextMarkdown, reqOptions);
+      const titleUpdate = params.data.new_title
+        ? await updateDocxTitle(client, documentTarget, params.data.new_title, reqOptions)
+        : undefined;
 
       return successResult({
         success: true,
         document_id: rewritten.documentId,
-        title: rewritten.title,
+        title: titleUpdate?.updated ? titleUpdate.title : rewritten.title,
         revision_id: rewritten.revisionId,
         mode: params.data.mode,
         markdown_length_before: fetched.markdown.length,
         markdown_length_after: nextMarkdown.length,
         block_count: rewritten.blockCount,
+        title_updated: titleUpdate?.updated ?? false,
+        title_update_via: titleUpdate?.via,
         note: params.data.new_title
-          ? 'Document title update is not supported by the current official docx API. The body content was updated successfully.'
+          ? titleUpdate?.updated
+            ? 'The body content was updated successfully and the title was updated through the Wiki node binding.'
+            : 'The body content was updated successfully. Title update is only supported when this docx is mounted in Wiki.'
           : undefined,
       });
     } catch (error) {

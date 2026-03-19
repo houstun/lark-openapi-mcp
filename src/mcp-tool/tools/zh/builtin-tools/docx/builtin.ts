@@ -8,6 +8,7 @@ import {
   handlePermissionError,
   isPermissionError,
   rewriteDocxFromMarkdown,
+  updateDocxTitle,
 } from '../../../../utils';
 
 const updateModeSchema = z.enum([
@@ -286,14 +287,21 @@ export const larkDocxBuiltinMarkdownWriteTool: McpTool = {
           params.data.markdown,
           reqOptions,
         );
+        const titleUpdate = params.data.title
+          ? await updateDocxTitle(client, params.data.document_id, params.data.title, reqOptions)
+          : undefined;
         return successResult({
           success: true,
           document_id: rewritten.documentId,
-          title: rewritten.title,
+          title: titleUpdate?.updated ? titleUpdate.title : rewritten.title,
           revision_id: rewritten.revisionId,
           block_count: rewritten.blockCount,
+          title_updated: titleUpdate?.updated ?? false,
+          title_update_via: titleUpdate?.via,
           note: params.data.title
-            ? '当前官方 docx API 不支持直接更新文档标题，已原地覆盖正文 Markdown 内容。'
+            ? titleUpdate?.updated
+              ? '已原地覆盖正文 Markdown 内容，并通过 Wiki 节点绑定更新标题。'
+              : '已原地覆盖正文 Markdown 内容。标题更新目前仅在该 docx 挂载到 Wiki 时支持。'
             : '已原地覆盖正文 Markdown 内容。',
         });
       }
@@ -333,7 +341,10 @@ export const larkDocxBuiltinUpdateTool: McpTool = {
       mode: updateModeSchema.describe('更新模式'),
       selection_with_ellipsis: z.string().describe('范围定位，格式为 "start...end"，用于按片段定位').optional(),
       selection_by_title: z.string().describe('标题定位，例如 "## 章节标题"，用于按标题定位整段内容').optional(),
-      new_title: z.string().describe('保留字段。当前官方 API 仍不支持直接更新文档标题').optional(),
+      new_title: z
+        .string()
+        .describe('可选的新标题。当前在 docx 挂载到 Wiki 时支持更新；独立 docx 仍暂不支持')
+        .optional(),
       lang: z.enum(['zh', 'en', 'ja']).describe('抓取当前 Markdown 时 Mention 用户名的语言').optional(),
     }),
     useUAT: z.boolean().describe('使用用户身份请求，否则为应用身份').optional(),
@@ -351,17 +362,26 @@ export const larkDocxBuiltinUpdateTool: McpTool = {
         selection_with_ellipsis: params.data.selection_with_ellipsis,
       });
       const rewritten = await rewriteDocxFromMarkdown(client, fetched.documentId, nextMarkdown, reqOptions);
+      const titleUpdate = params.data.new_title
+        ? await updateDocxTitle(client, documentTarget, params.data.new_title, reqOptions)
+        : undefined;
 
       return successResult({
         success: true,
         document_id: rewritten.documentId,
-        title: rewritten.title,
+        title: titleUpdate?.updated ? titleUpdate.title : rewritten.title,
         revision_id: rewritten.revisionId,
         mode: params.data.mode,
         markdown_length_before: fetched.markdown.length,
         markdown_length_after: nextMarkdown.length,
         block_count: rewritten.blockCount,
-        note: params.data.new_title ? '当前官方 docx API 不支持直接更新文档标题，正文内容已成功更新。' : undefined,
+        title_updated: titleUpdate?.updated ?? false,
+        title_update_via: titleUpdate?.via,
+        note: params.data.new_title
+          ? titleUpdate?.updated
+            ? '正文内容已成功更新，并通过 Wiki 节点绑定更新标题。'
+            : '正文内容已成功更新。标题更新目前仅在该 docx 挂载到 Wiki 时支持。'
+          : undefined,
       });
     } catch (error) {
       return normalizeError(error);

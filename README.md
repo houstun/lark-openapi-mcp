@@ -152,7 +152,7 @@ To switch to the international version of Lark, add the `--domain` parameter in 
 
 ## Custom API Configuration
 
-> ⚠️ **Document Editing**: This fork now supports best-effort in-place Docx updates through `docx.builtin.update` and overwrite-mode `docx.builtin.markdownWrite`. The implementation fetches official Markdown, applies the change in Markdown space, and rewrites top-level blocks through official APIs. Complex nested structures may be normalized, and document title updates are still not supported by the official Docx API.
+> ⚠️ **Document Editing**: This fork now supports best-effort in-place Docx updates through `docx.builtin.update` and overwrite-mode `docx.builtin.markdownWrite`. The implementation fetches official Markdown, applies the change in Markdown space, and rewrites top-level blocks through official APIs. Complex nested structures may be normalized. Title updates are supported when the docx is mounted in Wiki via `wiki.v2.spaceNode.updateTitle`; standalone docx titles are still not exposed for direct update by the official Docx API.
 
 By default, the MCP service enables common APIs. To enable other tools or only specific APIs or presets, you can specify them using the `-t` parameter in the MCP Client configuration (JSON):
 

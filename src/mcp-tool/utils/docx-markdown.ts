@@ -30,6 +30,11 @@ export interface FetchDocxMarkdownResult {
   title?: string;
   revisionId?: number;
   markdown: string;
+  wikiNode?: {
+    spaceId: string;
+    nodeToken: string;
+    title?: string;
+  };
 }
 
 export interface CreateDocxFromMarkdownOptions {
@@ -55,6 +60,22 @@ export interface RewriteDocxFromMarkdownResult {
   title?: string;
   revisionId?: number;
   blockCount: number;
+  wikiNode?: {
+    spaceId: string;
+    nodeToken: string;
+    title?: string;
+  };
+}
+
+export interface UpdateDocxTitleResult {
+  documentId: string;
+  title: string;
+  updated: boolean;
+  via: 'wiki' | 'unsupported';
+  wikiNode?: {
+    spaceId: string;
+    nodeToken: string;
+  };
 }
 
 interface LineInfo {
@@ -117,6 +138,25 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isWikiTarget(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (!/^https?:\/\//.test(trimmed) && !trimmed.includes('/')) {
+    return trimmed.startsWith('wiki');
+  }
+
+  let normalized = trimmed;
+  if (!/^https?:\/\//.test(normalized)) {
+    normalized = `https://${normalized}`;
+  }
+
+  const parsed = new URL(normalized);
+  return /\/wiki\//.test(parsed.pathname);
+}
+
 async function withOptionalUserToken<T>(
   reqOptions: LarkRequestOptions,
   withToken: (options: NonNullable<LarkRequestOptions>) => Promise<T>,
@@ -161,6 +201,60 @@ export function resolveDocxDocumentId(documentIdOrUrl: string): string {
   }
 
   throw new Error(`Cannot parse Feishu/Lark document ID from: ${documentIdOrUrl}`);
+}
+
+async function tryGetWikiNode(
+  client: lark.Client,
+  token: string,
+  reqOptions: LarkRequestOptions,
+  objType?: 'docx' | 'wiki',
+) {
+  try {
+    return await withOptionalUserToken(
+      reqOptions,
+      (tokenOptions) => client.wiki.space.getNode({ params: { token, obj_type: objType } }, tokenOptions),
+      () => client.wiki.space.getNode({ params: { token, obj_type: objType } }),
+    );
+  } catch (error) {
+    return undefined;
+  }
+}
+
+async function resolveDocxTarget(client: lark.Client, documentIdOrUrl: string, reqOptions?: LarkRequestOptions) {
+  const token = resolveDocxDocumentId(documentIdOrUrl);
+  const targetIsWiki = isWikiTarget(documentIdOrUrl);
+
+  if (targetIsWiki) {
+    const wikiResponse = await tryGetWikiNode(client, token, reqOptions, undefined);
+    const node = wikiResponse?.data?.node;
+    if (!node?.obj_token || node.obj_type !== 'docx' || !node.space_id || !node.node_token) {
+      throw new Error('The provided Wiki target does not point to a docx document');
+    }
+
+    return {
+      documentId: node.obj_token,
+      wikiNode: {
+        spaceId: node.space_id,
+        nodeToken: node.node_token,
+        title: node.title,
+      },
+    };
+  }
+
+  const wikiResponse = await tryGetWikiNode(client, token, reqOptions, 'docx');
+  const node = wikiResponse?.data?.node;
+  if (node?.obj_type === 'docx' && node.space_id && node.node_token) {
+    return {
+      documentId: node.obj_token || token,
+      wikiNode: {
+        spaceId: node.space_id,
+        nodeToken: node.node_token,
+        title: node.title,
+      },
+    };
+  }
+
+  return { documentId: token };
 }
 
 export async function createDocxFromMarkdown(
@@ -247,7 +341,8 @@ export async function fetchDocxAsMarkdown(
   reqOptions?: LarkRequestOptions,
   options?: FetchDocxMarkdownOptions,
 ): Promise<FetchDocxMarkdownResult> {
-  const documentId = resolveDocxDocumentId(documentIdOrUrl);
+  const resolvedTarget = await resolveDocxTarget(client, documentIdOrUrl, reqOptions);
+  const documentId = resolvedTarget.documentId;
   const [markdownResponse, documentResponse] = await Promise.all([
     withOptionalUserToken(
       reqOptions,
@@ -282,9 +377,10 @@ export async function fetchDocxAsMarkdown(
 
   return {
     documentId,
-    title: documentResponse?.data?.document?.title,
+    title: resolvedTarget.wikiNode?.title || documentResponse?.data?.document?.title,
     revisionId: documentResponse?.data?.document?.revision_id,
     markdown: markdownResponse?.data?.content || '',
+    wikiNode: resolvedTarget.wikiNode,
   };
 }
 
@@ -325,7 +421,8 @@ export async function rewriteDocxFromMarkdown(
   markdown: string,
   reqOptions?: LarkRequestOptions,
 ): Promise<RewriteDocxFromMarkdownResult> {
-  const documentId = resolveDocxDocumentId(documentIdOrUrl);
+  const resolvedTarget = await resolveDocxTarget(client, documentIdOrUrl, reqOptions);
+  const documentId = resolvedTarget.documentId;
   const metadata = await withOptionalUserToken(
     reqOptions,
     (tokenOptions) => client.docx.document.get({ path: { document_id: documentId } }, tokenOptions),
@@ -416,9 +513,70 @@ export async function rewriteDocxFromMarkdown(
 
   return {
     documentId,
-    title: metadata?.data?.document?.title,
+    title: resolvedTarget.wikiNode?.title || metadata?.data?.document?.title,
     revisionId: metadata?.data?.document?.revision_id,
     blockCount: nextBlocks.length,
+    wikiNode: resolvedTarget.wikiNode,
+  };
+}
+
+export async function updateDocxTitle(
+  client: lark.Client,
+  documentIdOrUrl: string,
+  title: string,
+  reqOptions?: LarkRequestOptions,
+): Promise<UpdateDocxTitleResult> {
+  const nextTitle = title.trim();
+  if (!nextTitle) {
+    throw new Error('Title cannot be empty');
+  }
+
+  const resolvedTarget = await resolveDocxTarget(client, documentIdOrUrl, reqOptions);
+  if (!resolvedTarget.wikiNode) {
+    return {
+      documentId: resolvedTarget.documentId,
+      title: nextTitle,
+      updated: false,
+      via: 'unsupported',
+    };
+  }
+
+  await withOptionalUserToken(
+    reqOptions,
+    (tokenOptions) =>
+      client.wiki.spaceNode.updateTitle(
+        {
+          path: {
+            space_id: resolvedTarget.wikiNode!.spaceId,
+            node_token: resolvedTarget.wikiNode!.nodeToken,
+          },
+          data: {
+            title: nextTitle,
+          },
+        },
+        tokenOptions,
+      ),
+    () =>
+      client.wiki.spaceNode.updateTitle({
+        path: {
+          space_id: resolvedTarget.wikiNode!.spaceId,
+          node_token: resolvedTarget.wikiNode!.nodeToken,
+        },
+        data: {
+          title: nextTitle,
+        },
+      }),
+  );
+
+  return {
+    documentId: resolvedTarget.documentId,
+    title: nextTitle,
+    updated: true,
+    via: 'wiki',
+    wikiNode: {
+      spaceId: resolvedTarget.wikiNode.spaceId,
+      nodeToken: resolvedTarget.wikiNode.nodeToken,
+    },
   };
 }
 

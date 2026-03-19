@@ -149,7 +149,7 @@ npx -y @larksuiteoapi/lark-mcp login -a cli_xxxx -s yyyyy
 
 ## 自定义配置开启API
 
-> ⚠️ **云文档编辑**：当前 fork 已支持基于官方 API 的“尽力而为”原地更新能力，包括 `docx.builtin.update` 和支持覆盖模式的 `docx.builtin.markdownWrite`。实现方式是先抓取官方 Markdown，再在 Markdown 层应用变更，最后通过官方块接口重写顶层内容块。复杂嵌套结构可能会被规范化，文档标题更新目前仍受官方 Docx API 限制而不支持。
+> ⚠️ **云文档编辑**：当前 fork 已支持基于官方 API 的“尽力而为”原地更新能力，包括 `docx.builtin.update` 和支持覆盖模式的 `docx.builtin.markdownWrite`。实现方式是先抓取官方 Markdown，再在 Markdown 层应用变更，最后通过官方块接口重写顶层内容块。复杂嵌套结构可能会被规范化。标题更新目前在 docx 挂载到 Wiki 时可通过 `wiki.v2.spaceNode.updateTitle` 生效；独立 docx 的标题仍受官方 Docx API 限制，暂不支持直接更新。
 
 默认情况下，MCP 服务启用常用 API。如需启用其他工具或仅启用特定 API 或 preset，推荐在 MCP Client 配置（JSON）中通过 `-t` 指定（用逗号分隔）：
 

@@ -2,6 +2,7 @@ import {
   applyMarkdownUpdate,
   parseMarkdownToDocxBlocks,
   resolveDocxDocumentId,
+  updateDocxTitle,
 } from '../../../src/mcp-tool/utils/docx-markdown';
 
 describe('docx markdown utils', () => {
@@ -16,6 +17,82 @@ describe('docx markdown utils', () => {
 
     it('should parse a docs URL without protocol', () => {
       expect(resolveDocxDocumentId('feishu.cn/docs/doxcnXYZ789')).toBe('doxcnXYZ789');
+    });
+
+    it('should parse a wiki URL token', () => {
+      expect(resolveDocxDocumentId('https://feishu.cn/wiki/wikcnXYZ789')).toBe('wikcnXYZ789');
+    });
+  });
+
+  describe('updateDocxTitle', () => {
+    it('should update title through wiki binding when the docx is mounted in wiki', async () => {
+      const getNode = jest
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            node: {
+              obj_type: 'docx',
+              obj_token: 'doxcn123ABC',
+              space_id: 'space_001',
+              node_token: 'wiki_001',
+              title: 'Old Title',
+            },
+          },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            node: {
+              obj_type: 'docx',
+              obj_token: 'doxcn123ABC',
+              space_id: 'space_001',
+              node_token: 'wiki_001',
+              title: 'Old Title',
+            },
+          },
+        });
+      const updateTitle = jest.fn().mockResolvedValue({ data: {} });
+      const client = {
+        wiki: {
+          space: { getNode },
+          spaceNode: { updateTitle },
+        },
+      } as any;
+
+      const result = await updateDocxTitle(client, 'https://feishu.cn/docx/doxcn123ABC', 'New Title');
+
+      expect(updateTitle).toHaveBeenCalledWith({
+        path: { space_id: 'space_001', node_token: 'wiki_001' },
+        data: { title: 'New Title' },
+      });
+      expect(result).toEqual({
+        documentId: 'doxcn123ABC',
+        title: 'New Title',
+        updated: true,
+        via: 'wiki',
+        wikiNode: {
+          spaceId: 'space_001',
+          nodeToken: 'wiki_001',
+        },
+      });
+    });
+
+    it('should report unsupported when the docx has no wiki binding', async () => {
+      const client = {
+        wiki: {
+          space: { getNode: jest.fn().mockResolvedValue(undefined) },
+          spaceNode: { updateTitle: jest.fn() },
+        },
+      } as any;
+
+      const result = await updateDocxTitle(client, 'doxcn123ABC', 'Standalone Title');
+
+      expect(result).toEqual({
+        documentId: 'doxcn123ABC',
+        title: 'Standalone Title',
+        updated: false,
+        via: 'unsupported',
+      });
+      expect(client.wiki.spaceNode.updateTitle).not.toHaveBeenCalled();
     });
   });
 
